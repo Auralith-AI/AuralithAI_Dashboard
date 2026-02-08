@@ -20,7 +20,8 @@ import {
   Facebook,
   TrendingUp,
   Filter,
-  LogOut
+  LogOut,
+  Shield
 } from 'lucide-react';
 import { format, subDays, startOfMonth, startOfDay, endOfDay } from 'date-fns';
 import { useAuth } from '@/util/AuthContext';
