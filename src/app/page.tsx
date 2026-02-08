@@ -26,6 +26,9 @@ import { format, subDays, startOfMonth, startOfDay, endOfDay } from 'date-fns';
 import { useAuth } from '@/util/AuthContext';
 import { useRouter } from 'next/navigation';
 
+// Force dynamic rendering to avoid prerender issues with auth context
+export const dynamic = 'force-dynamic';
+
 // API endpoint for dashboard data
 const API_URL = 'https://auraalithai--auraalith-dashboard-dashboard-api.modal.run';
 
@@ -98,7 +101,29 @@ const SENTIMENT_COLORS = {
   unresponsive: '#facc15'
 };
 
-export default function Dashboard() {
+// Wrapper to handle SSR - only render Dashboard after mounting
+export default function DashboardWrapper() {
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  if (!mounted) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-12 h-12 border-4 border-purple-500 border-t-transparent rounded-full animate-spin"></div>
+          <p className="text-muted text-sm animate-pulse">Loading Dashboard...</p>
+        </div>
+      </div>
+    );
+  }
+
+  return <Dashboard />;
+}
+
+function Dashboard() {
   const { user, profile, loading: authLoading, signOut } = useAuth();
   const router = useRouter();
 

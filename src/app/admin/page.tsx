@@ -1,31 +1,76 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useAuth } from '@/util/AuthContext';
 import { useRouter } from 'next/navigation';
-import { Shield, Plus, UserPlus, Search, Building2, Loader2, CheckCircle, AlertTriangle } from 'lucide-react';
+import { Shield, Plus, UserPlus, Building2, Loader2, CheckCircle, AlertTriangle } from 'lucide-react';
 
 export default function AdminPage() {
-    const { user, profile, loading: authLoading } = useAuth();
     const router = useRouter();
+
+    // Mount check to ensure client-only rendering
+    const [mounted, setMounted] = useState(false);
+
+    // Dynamically import useAuth only on client
+    const [authState, setAuthState] = useState<{
+        user: any;
+        profile: any;
+        loading: boolean;
+    }>({ user: null, profile: null, loading: true });
 
     // Form State
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [clientName, setClientName] = useState('');
-    const [role, setRole] = useState('admin'); // admin = Team Leader, agent = Agent
-    const [adminSecret, setAdminSecret] = useState('admin_10m'); // Default from request
-
+    const [role, setRole] = useState('admin');
+    const [adminSecret, setAdminSecret] = useState('admin_10m');
     const [loading, setLoading] = useState(false);
     const [result, setResult] = useState<{ status: string, message: string } | null>(null);
 
-    // Protect Route (Simple client-side check)
-    // Ideally this should also be protected by RLS or backend logic
     useEffect(() => {
-        if (!authLoading && !user) {
-            router.push('/login');
-        }
-    }, [user, authLoading, router]);
+        setMounted(true);
+
+        // Dynamically import and use auth
+        const loadAuth = async () => {
+            const { useAuth } = await import('@/util/AuthContext');
+            // This won't work directly, so we use a different approach
+        };
+
+        // Instead, check auth via direct fetch to session
+        const checkAuth = async () => {
+            try {
+                const { createBrowserClient } = await import('@supabase/ssr');
+                const supabase = createBrowserClient(
+                    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+                    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+                );
+
+                const { data: { session } } = await supabase.auth.getSession();
+
+                if (!session?.user) {
+                    router.push('/login');
+                    return;
+                }
+
+                // Get profile
+                const { data: profile } = await supabase
+                    .from('profiles')
+                    .select('*')
+                    .eq('id', session.user.id)
+                    .single();
+
+                setAuthState({
+                    user: session.user,
+                    profile: profile,
+                    loading: false
+                });
+            } catch (error) {
+                console.error('Auth check failed:', error);
+                router.push('/login');
+            }
+        };
+
+        checkAuth();
+    }, [router]);
 
     const handleCreateUser = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -33,8 +78,6 @@ export default function AdminPage() {
         setResult(null);
 
         try {
-            // Call our Modal Backend Endpoint
-            // This endpoint uses service_role key to bypass RLS and create users
             const response = await fetch('https://auraalithai--auraalith-dashboard-create-dashboard-user.modal.run', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -51,7 +94,6 @@ export default function AdminPage() {
 
             if (data.status === 'success') {
                 setResult({ status: 'success', message: `Successfully created user for ${clientName}!` });
-                // Reset form
                 setEmail('');
                 setPassword('');
                 setClientName('');
@@ -66,7 +108,19 @@ export default function AdminPage() {
         }
     };
 
-    if (authLoading || !user) return null;
+    // Don't render until mounted and auth checked
+    if (!mounted || authState.loading) {
+        return (
+            <div className="min-h-screen flex items-center justify-center bg-background">
+                <div className="flex flex-col items-center gap-4">
+                    <Loader2 className="w-12 h-12 text-purple-500 animate-spin" />
+                    <p className="text-muted text-sm">Loading admin panel...</p>
+                </div>
+            </div>
+        );
+    }
+
+    if (!authState.user) return null;
 
     return (
         <div className="min-h-screen p-4 md:p-8 bg-background text-foreground">
@@ -77,7 +131,7 @@ export default function AdminPage() {
                 </div>
                 <div>
                     <h1 className="text-3xl font-bold tracking-tight">Super Admin Panel</h1>
-                    <p className="text-muted text-sm">User Management & Provisioning</p>
+                    <p className="text-muted text-sm">User Management &amp; Provisioning</p>
                 </div>
             </header>
 
@@ -167,7 +221,7 @@ export default function AdminPage() {
                             disabled={loading}
                             className="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold py-3 rounded-lg transition-all shadow-lg shadow-purple-600/20 disabled:opacity-50 disabled:cursor-not-allowed flex justify-center items-center gap-2"
                         >
-                            {loading ? <Loader2 className="animate-spin" /> : <plus size={18} />}
+                            {loading ? <Loader2 className="animate-spin" /> : <Plus size={18} />}
                             {loading ? 'Provisioning...' : 'Create Account'}
                         </button>
                     </form>
@@ -184,11 +238,11 @@ export default function AdminPage() {
                             </li>
                             <li className="flex gap-2">
                                 <div className="w-1.5 h-1.5 rounded-full bg-blue-500 mt-1.5" />
-                                <span><strong>Agents:</strong> See data where they are the "Contact Owner".</span>
+                                <span><strong>Agents:</strong> See data where they are the &quot;Contact Owner&quot;.</span>
                             </li>
                             <li className="flex gap-2">
                                 <div className="w-1.5 h-1.5 rounded-full bg-green-500 mt-1.5" />
-                                <span><strong>Client ID</strong> is generated automatically from the company name (e.g. "ReMax Miami" -> "remax_miami").</span>
+                                <span><strong>Client ID</strong> is generated automatically from the company name.</span>
                             </li>
                         </ul>
                     </div>
