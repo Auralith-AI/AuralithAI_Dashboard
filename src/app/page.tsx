@@ -335,6 +335,17 @@ function Dashboard() {
             <RotateCcw size={18} className={loading ? 'animate-spin' : ''} />
           </button>
 
+
+          {/* Admin Link */}
+          {(profile?.role === 'super_admin' || profile?.role === 'admin') && (
+            <button
+              onClick={() => router.push('/admin')}
+              className="flex items-center gap-2 px-3 py-2 rounded-lg bg-purple-500/10 border border-purple-500/20 text-purple-400 hover:bg-purple-500 hover:text-white transition-all text-sm font-medium"
+            >
+              <Shield size={16} /> Admin
+            </button>
+          )}
+
           <button
             onClick={signOut}
             className="flex items-center gap-2 px-3 py-2 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 hover:bg-red-500 hover:text-white transition-all text-sm font-medium"
