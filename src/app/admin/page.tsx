@@ -1,6 +1,7 @@
 'use client';
 
 // ... Imports ...
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Shield, Plus, UserPlus, Building2, Loader2, CheckCircle, AlertTriangle, Eye, Trash2, LogIn } from 'lucide-react';
 import { useAuth } from '@/util/AuthContext'; // Import context hook
