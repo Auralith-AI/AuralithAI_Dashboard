@@ -17,6 +17,8 @@ type AuthContextType = {
     loading: boolean;
     signOut: () => Promise<void>;
     supabase: SupabaseClient | null;
+    viewingAsClientId: string | null;
+    impersonateClient: (clientId: string | null) => void;
 };
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -26,6 +28,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const [profile, setProfile] = useState<UserProfile | null>(null);
     const [loading, setLoading] = useState(true);
     const [supabase, setSupabase] = useState<SupabaseClient | null>(null);
+    const [viewingAsClientId, setViewingAsClientId] = useState<string | null>(null);
 
     useEffect(() => {
         // Only run on client
@@ -45,14 +48,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             setLoading(false);
 
             const { data: { subscription } } = client.auth.onAuthStateChange(
-                async (_event, session) => {
+                async (event, session) => {
+                    // console.log("Auth Event:", event);
                     setUser(session?.user ?? null);
                     if (session?.user) {
                         await fetchProfile(client, session.user.id);
                     } else {
                         setProfile(null);
+                        setViewingAsClientId(null); // Reset impersonation on logout
                     }
                     setLoading(false);
+
+                    if (event === 'SIGNED_OUT') {
+                        setUser(null);
+                        setProfile(null);
+                        setViewingAsClientId(null);
+                        window.location.href = '/login'; // Force reload/redirect
+                    }
                 }
             );
 
@@ -78,14 +90,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     async function signOut() {
         if (supabase) {
-            await supabase.auth.signOut();
+            const { error } = await supabase.auth.signOut();
+            if (error) console.error("SignOut Error", error);
         }
+        // State update happens in onAuthStateChange, but we force it here too for responsiveness
         setUser(null);
         setProfile(null);
+        setViewingAsClientId(null);
+    }
+
+    function impersonateClient(clientId: string | null) {
+        setViewingAsClientId(clientId);
     }
 
     return (
-        <AuthContext.Provider value={{ user, profile, loading, signOut, supabase }}>
+        <AuthContext.Provider value={{ user, profile, loading, signOut, supabase, viewingAsClientId, impersonateClient }}>
             {children}
         </AuthContext.Provider>
     );

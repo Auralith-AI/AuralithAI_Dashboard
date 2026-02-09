@@ -125,7 +125,7 @@ export default function DashboardWrapper() {
 }
 
 function Dashboard() {
-  const { user, profile, loading: authLoading, signOut } = useAuth();
+  const { user, profile, loading: authLoading, signOut, viewingAsClientId, impersonateClient } = useAuth();
   const router = useRouter();
 
   const [stats, setStats] = useState<DashboardStats | null>(null);
@@ -156,7 +156,7 @@ function Dashboard() {
     fetchDashboardData();
     const interval = setInterval(fetchDashboardData, 30000);
     return () => clearInterval(interval);
-  }, [dateRange, profile?.client_id]); // Refetch when date range changes
+  }, [dateRange, profile?.client_id, viewingAsClientId]); // Refetch when impersonating
 
   useEffect(() => {
     document.documentElement.classList.toggle('light-mode', !isDarkMode);
@@ -171,16 +171,18 @@ function Dashboard() {
   }, [user, authLoading, router]);
 
   async function fetchDashboardData() {
-    if (!profile?.client_id) return;
+    // If impersonating, use that ID. Otherwise use own profile ID.
+    const activeClientId = viewingAsClientId || profile?.client_id;
+
+    if (!activeClientId) return;
 
     setLoading(true);
     try {
       // Pass ISO strings for filtering
       const startISO = dateRange.start.toISOString();
       const endISO = dateRange.end.toISOString();
-      const clientId = profile.client_id;
 
-      const response = await fetch(`${API_URL}/stats?client_id=${clientId}&start_date=${startISO}&end_date=${endISO}`);
+      const response = await fetch(`${API_URL}/stats?client_id=${activeClientId}&start_date=${startISO}&end_date=${endISO}`);
       if (!response.ok) throw new Error('Failed to fetch data');
       const data = await response.json();
 
@@ -280,7 +282,20 @@ function Dashboard() {
   if (!user) return null; // Prevent flash before redirect
 
   return (
-    <div className="min-h-screen p-4 md:p-8 bg-background text-foreground transition-colors duration-300">
+    <div className="min-h-screen p-4 md:p-8 bg-background text-foreground transition-colors duration-300 relative">
+
+      {/* Impersonation Banner */}
+      {viewingAsClientId && (
+        <div className="fixed top-0 left-0 right-0 bg-yellow-500 text-black font-bold p-2 text-center z-50 flex items-center justify-center gap-4">
+          <span>👀 Viewing as Client: {viewingAsClientId}</span>
+          <button
+            onClick={() => impersonateClient(null)}
+            className="bg-black text-white px-3 py-1 rounded text-xs hover:bg-gray-800 transition-colors"
+          >
+            Exit View
+          </button>
+        </div>
+      )}
 
       {/* Header */}
       <header className="mb-8 flex flex-col md:flex-row md:items-center justify-between gap-6">
