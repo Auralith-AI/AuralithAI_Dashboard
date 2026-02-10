@@ -324,7 +324,7 @@ export default function AdminPage() {
                                 <div className="p-8 text-center text-muted flex justify-center"><Loader2 className="animate-spin" /></div>
                             ) : (
                                 <div className="space-y-1">
-                                    {Object.entries(groupedUsers).map(([clientId, clientUsers]) => {
+                                    {Object.entries(groupedUsers).map(([clientId, clientUsers]: [string, any[]]) => {
                                         const isExpanded = expandedClients.has(clientId);
                                         const userCount = clientUsers.length;
 
