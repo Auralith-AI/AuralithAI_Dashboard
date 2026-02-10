@@ -14,47 +14,55 @@ export default function AdminPage() {
     const [mounted, setMounted] = useState(false);
 
     // Form State
+    const [fullName, setFullName] = useState('');
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [clientName, setClientName] = useState('');
     // For Broker Admin, force role to 'agent'
     const [role, setRole] = useState('agent');
 
-    const [adminSecret, setAdminSecret] = useState('admin_10m');
+    // Admin Secret is handled internally now
+    const ADMIN_SECRET = 'admin_10m';
+
     const [loading, setLoading] = useState(false);
     const [result, setResult] = useState<{ status: string, message: string } | null>(null);
 
-    // User List State
+    // State for user list
     const [users, setUsers] = useState<any[]>([]);
-    const [loadingUsers, setLoadingUsers] = useState(false);
+    const [loadingUsers, setLoadingUsers] = useState(true);
+
+    // State for Accordion/Grouping
+    const [expandedClients, setExpandedClients] = useState<Set<string>>(new Set());
 
     useEffect(() => {
         setMounted(true);
         if (profile) {
-            // If Broker Admin, default role is agent (can't choose)
-            if (profile.role === 'admin') setRole('agent');
-            else setRole('admin'); // Super admin default
-
             fetchUsers();
+            // Default role for super admin
+            if (profile.role === 'super_admin') setRole('admin');
         }
     }, [profile]);
 
     const fetchUsers = async () => {
-        if (!profile) return;
         setLoadingUsers(true);
         try {
             const response = await fetch('https://auraalithai--auraalith-dashboard-get-dashboard-users.modal.run', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    admin_secret: adminSecret,
-                    requester_role: profile.role,
-                    requester_client_id: profile.client_id
+                    admin_secret: ADMIN_SECRET,
+                    requester_role: profile?.role,
+                    requester_client_id: profile?.client_id
                 })
             });
             const data = await response.json();
             if (data.status === 'success') {
                 setUsers(data.users);
+
+                // Auto-expand own client for Brokers
+                if (profile?.role === 'admin') {
+                    setExpandedClients(new Set([profile.client_id]));
+                }
             }
         } catch (err) {
             console.error("Failed to fetch users", err);
@@ -68,31 +76,18 @@ export default function AdminPage() {
         setLoading(true);
         setResult(null);
 
-        // Broker Admin Constraint: Force Client Name to match own
-        let finalClientName = clientName;
-        let finalRole = role;
-
-        if (profile?.role === 'admin') {
-            finalClientName = profile.full_name || ''; // Force match
-            finalRole = 'agent';
-
-            if (!finalClientName) {
-                setResult({ status: 'error', message: 'Error: Your profile is missing a full name/company name.' });
-                setLoading(false);
-                return;
-            }
-        }
-
         try {
             const response = await fetch('https://auraalithai--auraalith-dashboard-create-dashboard-user.modal.run', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    admin_secret: adminSecret,
+                    admin_secret: ADMIN_SECRET,
                     email,
                     password,
-                    client_name: finalClientName,
-                    role: finalRole
+                    full_name: fullName, // Pass actual name
+                    client_name: profile?.role === 'super_admin' ? clientName : undefined, // For new clients
+                    target_client_id: profile?.role === 'admin' ? profile.client_id : undefined, // For existing team
+                    role: role
                 })
             });
 
@@ -102,6 +97,7 @@ export default function AdminPage() {
                 setResult({ status: 'success', message: `Successfully created user!` });
                 setEmail('');
                 setPassword('');
+                setFullName('');
                 if (profile?.role === 'super_admin') setClientName(''); // Only clear if super admin
                 fetchUsers(); // Refresh list
             } else {
@@ -117,7 +113,18 @@ export default function AdminPage() {
 
     const handleImpersonate = (targetClientId: string) => {
         impersonateClient(targetClientId);
-        router.push('/'); // Redirect to dashboard
+
+        // Use window.location to force a hard reload check, or router if preferred.
+        // Router is smoother.
+        // We need to ensure the dashboard picks up the change.
+        // AuthContext usually handles state, but let's confirm.
+        // Ideally router.push('/') works if context updates first.
+
+        // Wait for state update propagation? (Sync issue mitigation)
+        setTimeout(() => {
+            // Redirect to dashboard
+            window.location.href = '/';
+        }, 100);
     };
 
     const handleDeleteUser = async (targetUserId: string) => {
@@ -128,7 +135,7 @@ export default function AdminPage() {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    admin_secret: adminSecret,
+                    admin_secret: ADMIN_SECRET,
                     requester_role: profile?.role,
                     requester_client_id: profile?.client_id,
                     target_user_id: targetUserId
@@ -144,6 +151,27 @@ export default function AdminPage() {
             alert("Error deleting user");
         }
     };
+
+    // Grouping Logic
+    const toggleClientExpand = (clientId: string) => {
+        const newSet = new Set(expandedClients);
+        if (newSet.has(clientId)) {
+            newSet.delete(clientId);
+        } else {
+            newSet.add(clientId);
+        }
+        setExpandedClients(newSet);
+    };
+
+    // Group users by client_id
+    const groupedUsers = users.reduce((acc, user) => {
+        const cid = user.client_id || 'unknown';
+        if (!acc[cid]) {
+            acc[cid] = [];
+        }
+        acc[cid].push(user);
+        return acc;
+    }, {} as Record<string, any[]>);
 
 
     if (!mounted || !user || !profile) {
@@ -170,7 +198,7 @@ export default function AdminPage() {
                         </p>
                     </div>
                 </div>
-                <button onClick={() => router.push('/')} className="text-sm text-muted hover:text-white">
+                <button onClick={() => window.location.href = '/'} className="text-sm text-muted hover:text-white">
                     ← Back to Dashboard
                 </button>
             </header>
@@ -190,7 +218,7 @@ export default function AdminPage() {
                         {/* Company Name logic */}
                         {profile.role === 'super_admin' ? (
                             <div>
-                                <label className="block text-sm font-medium text-muted mb-1">Company / Agent Name</label>
+                                <label className="block text-sm font-medium text-muted mb-1">Company / Team Name</label>
                                 <div className="relative">
                                     <Building2 className="absolute left-3 top-3 text-gray-500" size={16} />
                                     <input
@@ -208,6 +236,20 @@ export default function AdminPage() {
                                 Adding agent to: <span className="text-white font-bold">{profile.full_name}</span>
                             </div>
                         )}
+
+                        {/* Full Name Input (New) */}
+                        <div>
+                            <label className="block text-sm font-medium text-muted mb-1">Full Name</label>
+                            <input
+                                type="text"
+                                required
+                                className="w-full bg-white/5 border border-white/10 rounded-lg p-2.5 focus:border-purple-500 outline-none transition-all"
+                                placeholder="e.g. John Doe"
+                                value={fullName}
+                                onChange={e => setFullName(e.target.value)}
+                            />
+                        </div>
+
 
                         {/* Role Selection - Super Admin Only */}
                         {profile.role === 'super_admin' && (
@@ -249,15 +291,7 @@ export default function AdminPage() {
                             </div>
                         </div>
 
-                        <div className="pt-2">
-                            <label className="block text-xs font-mono text-gray-500 mb-1">Admin Secret</label>
-                            <input
-                                type="password"
-                                className="w-full bg-black/20 border border-white/5 rounded p-2 text-xs font-mono text-gray-400"
-                                value={adminSecret}
-                                onChange={e => setAdminSecret(e.target.value)}
-                            />
-                        </div>
+                        {/* Admin Secret HIDDEN */}
 
                         {result && (
                             <div className={`p-4 rounded-lg flex items-center gap-3 ${result.status === 'success' ? 'bg-green-500/10 text-green-400 border border-green-500/20' : 'bg-red-500/10 text-red-400 border border-red-500/20'}`}>
@@ -277,7 +311,7 @@ export default function AdminPage() {
                     </form>
                 </section>
 
-                {/* User List Table */}
+                {/* User List Table (Grouped or Flat) */}
                 <section className="lg:col-span-2 space-y-6">
                     <div className="glass-card overflow-hidden">
                         <div className="p-6 border-b border-white/5 flex justify-between items-center bg-white/5">
@@ -285,69 +319,103 @@ export default function AdminPage() {
                             <button onClick={fetchUsers} className="text-xs text-purple-400 hover:text-purple-300">Refresh List</button>
                         </div>
 
-                        <div className="overflow-x-auto">
-                            <table className="w-full text-left text-sm">
-                                <thead className="bg-black/20 text-muted uppercase tracking-wider font-medium text-xs">
-                                    <tr>
-                                        <th className="p-4">User</th>
-                                        <th className="p-4">Role</th>
-                                        {profile.role === 'super_admin' && <th className="p-4">Client ID</th>}
-                                        <th className="p-4 text-right">Actions</th>
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-white/5">
-                                    {loadingUsers ? (
-                                        <tr><td colSpan={4} className="p-8 text-center text-muted">Loading users...</td></tr>
-                                    ) : users.length === 0 ? (
-                                        <tr><td colSpan={4} className="p-8 text-center text-muted">No users found.</td></tr>
-                                    ) : (
-                                        users.map((u) => (
-                                            <tr key={u.id} className="hover:bg-white/5 transition-colors group">
-                                                <td className="p-4 font-medium">
-                                                    {u.full_name || 'Unnamed'}
-                                                    {u.id === user.id && <span className="ml-2 text-xs bg-purple-500/20 text-purple-400 px-1.5 py-0.5 rounded">You</span>}
-                                                </td>
-                                                <td className="p-4">
-                                                    <span className={`px-2 py-1 rounded text-xs font-bold uppercase
-                                                            ${u.role === 'super_admin' ? 'bg-red-500/20 text-red-400' :
-                                                            u.role === 'admin' ? 'bg-purple-500/20 text-purple-400' :
-                                                                'bg-blue-500/20 text-blue-400'}`}>
-                                                        {u.role}
+                        <div className="p-0">
+                            {loadingUsers ? (
+                                <div className="p-8 text-center text-muted flex justify-center"><Loader2 className="animate-spin" /></div>
+                            ) : (
+                                <div className="space-y-1">
+                                    {Object.entries(groupedUsers).map(([clientId, clientUsers]) => {
+                                        const isExpanded = expandedClients.has(clientId);
+                                        const userCount = clientUsers.length;
+
+                                        // For brokers, we might want to just show the table directly without accordion if they only see one client.
+                                        // But consistent UI is good.
+
+                                        return (
+                                            <div key={clientId} className="border-b border-white/5 last:border-0">
+                                                {/* Header / Folder */}
+                                                <div
+                                                    className="flex items-center justify-between p-4 cursor-pointer hover:bg-white/5 transition-colors"
+                                                    onClick={() => toggleClientExpand(clientId)}
+                                                >
+                                                    <div className="flex items-center gap-3">
+                                                        <Building2 className={`text-gray-500 ${isExpanded ? 'text-purple-400' : ''}`} size={20} />
+                                                        <div>
+                                                            <h4 className="font-medium capitalize text-base text-gray-200">
+                                                                {clientId.replace(/_/g, ' ')}
+                                                            </h4>
+                                                            <p className="text-xs text-muted">{userCount} User{userCount !== 1 ? 's' : ''}</p>
+                                                        </div>
+                                                    </div>
+                                                    <span className="text-gray-500 text-xs">
+                                                        {isExpanded ? '▼' : '▶'}
                                                     </span>
-                                                </td>
-                                                {profile.role === 'super_admin' && (
-                                                    <td className="p-4 font-mono text-xs text-muted">{u.client_id}</td>
+                                                </div>
+
+                                                {/* Expanded List */}
+                                                {isExpanded && (
+                                                    <div className="bg-black/20 animate-in slide-in-from-top-2 duration-200">
+                                                        <table className="w-full text-left text-sm">
+                                                            <thead className="text-muted uppercase tracking-wider font-medium text-xs border-b border-white/5">
+                                                                <tr>
+                                                                    <th className="p-3 pl-8">Name</th>
+                                                                    <th className="p-3">Role</th>
+                                                                    <th className="p-3 text-right">Actions</th>
+                                                                </tr>
+                                                            </thead>
+                                                            <tbody className="divide-y divide-white/5">
+                                                                {clientUsers.map((u: any) => (
+                                                                    <tr key={u.id} className="hover:bg-white/5 transition-colors">
+                                                                        <td className="p-3 pl-8 font-medium">
+                                                                            {u.full_name || u.email}
+                                                                            {u.id === user?.id && <span className="ml-2 text-xs bg-purple-500/20 text-purple-400 px-1.5 py-0.5 rounded">You</span>}
+                                                                            {(!u.full_name) && <span className="block text-xs text-muted font-normal">{u.email}</span>}
+                                                                        </td>
+                                                                        <td className="p-3">
+                                                                            <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase
+                                                                                 ${u.role === 'super_admin' ? 'bg-red-500/10 text-red-400' :
+                                                                                    u.role === 'admin' ? 'bg-purple-500/10 text-purple-400' :
+                                                                                        'bg-blue-500/10 text-blue-400'}`}>
+                                                                                {u.role}
+                                                                            </span>
+                                                                        </td>
+                                                                        <td className="p-3 pr-4 flex justify-end gap-2">
+                                                                            {/* Impersonate */}
+                                                                            {u.id !== user?.id && (
+                                                                                <button
+                                                                                    onClick={(e) => { e.stopPropagation(); handleImpersonate(u.client_id); }}
+                                                                                    title="View As"
+                                                                                    className="p-1.5 rounded hover:bg-white/10 text-gray-400 hover:text-cyan-400"
+                                                                                >
+                                                                                    <LogIn size={14} />
+                                                                                </button>
+                                                                            )}
+                                                                            {/* Delete */}
+                                                                            {u.id !== user?.id && (
+                                                                                <button
+                                                                                    onClick={(e) => { e.stopPropagation(); handleDeleteUser(u.id); }}
+                                                                                    title="Delete"
+                                                                                    className="p-1.5 rounded hover:bg-white/10 text-gray-400 hover:text-red-400"
+                                                                                >
+                                                                                    <Trash2 size={14} />
+                                                                                </button>
+                                                                            )}
+                                                                        </td>
+                                                                    </tr>
+                                                                ))}
+                                                            </tbody>
+                                                        </table>
+                                                    </div>
                                                 )}
-                                                <td className="p-4 flex justify-end gap-2">
+                                            </div>
+                                        );
+                                    })}
 
-                                                    {/* Impersonate Button (Super Admin or Broker for own agents) */}
-                                                    {u.id !== user.id && (
-                                                        <button
-                                                            onClick={() => handleImpersonate(u.client_id)}
-                                                            title="View Dashboard As..."
-                                                            className="p-2 rounded hover:bg-white/10 text-gray-400 hover:text-cyan-400 transition-colors"
-                                                        >
-                                                            <LogIn size={16} />
-                                                        </button>
-                                                    )}
-
-                                                    {/* Delete Button */}
-                                                    {/* Prevent deleting self */}
-                                                    {u.id !== user.id && (
-                                                        <button
-                                                            onClick={() => handleDeleteUser(u.id)}
-                                                            title="Delete User"
-                                                            className="p-2 rounded hover:bg-white/10 text-gray-400 hover:text-red-400 transition-colors"
-                                                        >
-                                                            <Trash2 size={16} />
-                                                        </button>
-                                                    )}
-                                                </td>
-                                            </tr>
-                                        ))
+                                    {users.length === 0 && (
+                                        <div className="p-8 text-center text-muted">No users found.</div>
                                     )}
-                                </tbody>
-                            </table>
+                                </div>
+                            )}
                         </div>
                     </div>
 
