@@ -26,7 +26,7 @@ export default function ForgotPasswordPage() {
 
             const { error } = await supabase.auth.resetPasswordForEmail(email, {
                 // Hardcoded production URL to ensure links work (requires Supabase Redirect URL whitelist)
-                redirectTo: 'https://auralith-ai-dashboard-ikgp.vercel.app/update-password',
+                redirectTo: 'https://dashboard.auralithai.co/update-password',
             });
 
             if (error) throw error;
