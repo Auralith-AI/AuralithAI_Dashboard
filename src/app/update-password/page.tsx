@@ -2,12 +2,15 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Lock, Loader2, CheckCircle } from 'lucide-react';
+import { Lock, Loader2, CheckCircle, Eye, EyeOff } from 'lucide-react';
 
 export default function UpdatePasswordPage() {
     const router = useRouter();
     const [password, setPassword] = useState('');
     const [confirmPassword, setConfirmPassword] = useState('');
+    const [showPassword, setShowPassword] = useState(false);
+    const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+
     const [loading, setLoading] = useState(false);
     const [success, setSuccess] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -15,6 +18,19 @@ export default function UpdatePasswordPage() {
 
     useEffect(() => {
         setMounted(true);
+        // Check for session on mount to ensure link was valid
+        const checkSession = async () => {
+            const { getSupabaseBrowserClient } = await import('@/util/supabase');
+            const supabase = getSupabaseBrowserClient();
+            const { data } = await supabase.auth.getSession();
+            if (!data.session) {
+                // If no session, the link might be invalid or they are not logged in.
+                // We won't redirect immediately to allow the user to see what's happening, 
+                // but we'll show a warning if they try to submit.
+                console.log("No active session found on update-password page.");
+            }
+        };
+        checkSession();
     }, []);
 
     const handleUpdatePassword = async (e: React.FormEvent) => {
@@ -49,7 +65,7 @@ export default function UpdatePasswordPage() {
                 router.push('/login');
             }, 3000);
         } catch (err: any) {
-            setError(err.message || 'Failed to update password');
+            setError(err.message || 'Failed to update password. Link may have expired.');
         } finally {
             setLoading(false);
         }
@@ -95,13 +111,20 @@ export default function UpdatePasswordPage() {
                                 <div className="relative">
                                     <Lock className="absolute left-3 top-3 text-gray-500" size={18} />
                                     <input
-                                        type="password"
+                                        type={showPassword ? "text" : "password"}
                                         required
                                         value={password}
                                         onChange={(e) => setPassword(e.target.value)}
-                                        className="w-full pl-10 bg-white/5 border border-white/10 rounded-lg p-3 focus:border-green-500 outline-none transition-all"
+                                        className="w-full pl-10 pr-10 bg-white/5 border border-white/10 rounded-lg p-3 focus:border-green-500 outline-none transition-all"
                                         placeholder="••••••••"
                                     />
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowPassword(!showPassword)}
+                                        className="absolute right-3 top-3 text-gray-500 hover:text-white transition-colors"
+                                    >
+                                        {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                                    </button>
                                 </div>
                             </div>
 
@@ -111,13 +134,20 @@ export default function UpdatePasswordPage() {
                                 <div className="relative">
                                     <Lock className="absolute left-3 top-3 text-gray-500" size={18} />
                                     <input
-                                        type="password"
+                                        type={showConfirmPassword ? "text" : "password"}
                                         required
                                         value={confirmPassword}
                                         onChange={(e) => setConfirmPassword(e.target.value)}
-                                        className="w-full pl-10 bg-white/5 border border-white/10 rounded-lg p-3 focus:border-green-500 outline-none transition-all"
+                                        className="w-full pl-10 pr-10 bg-white/5 border border-white/10 rounded-lg p-3 focus:border-green-500 outline-none transition-all"
                                         placeholder="••••••••"
                                     />
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                                        className="absolute right-3 top-3 text-gray-500 hover:text-white transition-colors"
+                                    >
+                                        {showConfirmPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                                    </button>
                                 </div>
                             </div>
 
